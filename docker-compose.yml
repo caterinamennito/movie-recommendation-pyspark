@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  movie-recommender:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./models:/app/models
+    environment:
+      - PYTHONPATH=/app/src
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    
+  # Optional: Add a database service
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: movie_recommendations
+      POSTGRES_USER: recommender
+      POSTGRES_PASSWORD: password123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
