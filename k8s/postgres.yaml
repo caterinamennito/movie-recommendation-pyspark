@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:13
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: "movie_recommendations"
+        - name: POSTGRES_USER
+          value: "recommender"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: init-script
+          mountPath: /docker-entrypoint-initdb.d
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+      - name: init-script
+        configMap:
+          name: postgres-init-script
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+type: Opaque
+stringData:
+  password: "password123"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-script
+data:
+  init.sql: |
+    -- Create tables for storing recommendations
+    CREATE TABLE IF NOT EXISTS user_recommendations (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        movie_id INTEGER NOT NULL,
+        predicted_rating FLOAT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        model_version VARCHAR(50),
+        UNIQUE(user_id, movie_id, model_version)
+    );
+
+    CREATE TABLE IF NOT EXISTS model_metrics (
+        id SERIAL PRIMARY KEY,
+        model_version VARCHAR(50) NOT NULL,
+        rmse FLOAT,
+        mae FLOAT,
+        r2 FLOAT,
+        coverage FLOAT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS user_feedback (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        movie_id INTEGER NOT NULL,
+        recommendation_id INTEGER REFERENCES user_recommendations(id),
+        feedback_score INTEGER CHECK (feedback_score IN (1, 2, 3, 4, 5)),
+        feedback_text TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Create indexes for better performance
+    CREATE INDEX IF NOT EXISTS idx_user_recommendations_user_id ON user_recommendations(user_id);
+    CREATE INDEX IF NOT EXISTS idx_user_recommendations_movie_id ON user_recommendations(movie_id);
+    CREATE INDEX IF NOT EXISTS idx_user_feedback_user_id ON user_feedback(user_id);
+    CREATE INDEX IF NOT EXISTS idx_model_metrics_version ON model_metrics(model_version);
