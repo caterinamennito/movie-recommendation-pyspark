@@ -50,10 +50,8 @@ def load_and_clean_data():
         escape='"',
         quote='"',
     )
-    # remove column belongs_to_collection
     movies = movies.drop("belongs_to_collection")
-    print("Sample titles after CSV load:")
-    movies.select("title").show(50, truncate=False)
+
     ratings = spark.read.csv("data/ratings_small.csv", header=True, inferSchema=True)
     links = spark.read.csv("data/links.csv", header=True, inferSchema=True)
 
@@ -86,6 +84,7 @@ def load_and_clean_data():
 
 def recommend_movies(favorite_movie_ids):
     print("Starting Spark application...")
+    print('favorite_movie_ids', favorite_movie_ids)
     movies, ratings, links, spark = load_and_clean_data()
 
     # Create a new userId (not in ratings)
@@ -137,6 +136,8 @@ def train_model(df):
         implicitPrefs=False,
         coldStartStrategy="drop",
     )
+
+    # dropped the cross-validation to simplify and speed up
     param_grid = (
         ParamGridBuilder()
         .addGrid(als.rank, [10, 50, 100, 150])
